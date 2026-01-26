@@ -7,13 +7,15 @@ import time
 from typing import Any
 
 from homeassistant.components.lock import LockEntity
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
+from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from . import AlphaSmartCloudConfigEntry
 from .api import AlphaSmartCloudAPI
-from .const import DOMAIN, PROP_LOCK_MODE, PROP_NAME
+from .coordinator import AlphaSmartCloudData, AlphaSmartCloudDataUpdateCoordinator
+from .const import DOMAIN, PROP_IS_ONLINE, PROP_LOCK_MODE, PROP_NAME
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -35,30 +37,48 @@ async def async_setup_entry(
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
     """Set up the Alpha Smart Cloud lock entities."""
-    api = entry.runtime_data
+    api = entry.runtime_data.api
+    coordinator = entry.runtime_data.coordinator
 
-    devices_data = await hass.async_add_executor_job(api.get_devices)
+    devices_data = coordinator.data.devices
+    group_names = coordinator.data.group_names
 
     entities: list[AlphaSmartCloudDeviceLock] = []
     for device in devices_data:
         device_id = device["deviceId"]
-        device_data = await hass.async_add_executor_job(
-            api.get_device_with_template, device_id
-        )
+        group_id = device.get("groupId")
+        room_name = group_names.get(group_id)
+
+        device_data = coordinator.data.device_data.get(device_id)
+        if not device_data:
+            continue
         properties = {prop["id"]: prop for prop in device_data.get("properties", [])}
         if PROP_LOCK_MODE in properties:
-            entities.append(AlphaSmartCloudDeviceLock(api, device_data))
+            entities.append(
+                AlphaSmartCloudDeviceLock(
+                    coordinator, api, device_data, room_name
+                )
+            )
 
     async_add_entities(entities)
 
 
-class AlphaSmartCloudDeviceLock(LockEntity):
+class AlphaSmartCloudDeviceLock(
+    CoordinatorEntity[AlphaSmartCloudDataUpdateCoordinator], LockEntity
+):
     """Representation of an Alpha Smart Cloud device lock."""
 
     _attr_has_entity_name = True
 
-    def __init__(self, api: AlphaSmartCloudAPI, device_data: dict[str, Any]) -> None:
+    def __init__(
+        self,
+        coordinator: AlphaSmartCloudDataUpdateCoordinator,
+        api: AlphaSmartCloudAPI,
+        device_data: dict[str, Any],
+        room_name: str | None = None,
+    ) -> None:
         """Initialize the lock entity."""
+        super().__init__(coordinator)
         self._api = api
         self._device_id = device_data["deviceId"]
         self._attr_unique_id = f"{self._device_id}_lock"
@@ -68,9 +88,11 @@ class AlphaSmartCloudDeviceLock(LockEntity):
         self._pending_lock: tuple[bool, float] | None = None
 
         device_info = device_data.get("deviceInfo", {})
+        name = room_name or device_info.get("description", "Device")
+
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, self._device_id)},
-            name=device_info.get("description", "Device"),
+            name=name,
             manufacturer=device_info.get("oem"),
             model=device_info.get("type"),
         )
@@ -103,6 +125,13 @@ class AlphaSmartCloudDeviceLock(LockEntity):
         properties = {prop["id"]: prop for prop in device_data.get("properties", [])}
         now = time.monotonic()
 
+        # Check device availability based on online status
+        if PROP_IS_ONLINE in properties:
+            self._attr_available = bool(properties[PROP_IS_ONLINE]["value"])
+        else:
+            self._attr_available = False
+            _LOGGER.debug("Device %s missing online status, marking lock unavailable", self._device_id)
+
         if PROP_NAME in properties:
             self._attr_device_info["name"] = properties[PROP_NAME]["value"]
 
@@ -123,15 +152,16 @@ class AlphaSmartCloudDeviceLock(LockEntity):
 
             self._attr_is_locked = is_locked
 
-    async def async_update(self) -> None:
-        """Fetch new state data for this device."""
-        device_data = await self.hass.async_add_executor_job(
-            self._api.get_device_with_template, self._device_id
-        )
-        self._update_from_data(device_data)
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        device_data = self.coordinator.data.device_data.get(self._device_id)
+        if device_data:
+            self._update_from_data(device_data)
+        self.async_write_ha_state()
 
     async def async_lock(self, **kwargs: Any) -> None:
         """Lock the device controls."""
+        _LOGGER.debug("Locking device %s", self._device_id)
         payload = self._build_lock_payload(True)
         self._pending_lock = (True, time.monotonic())
 
@@ -139,7 +169,9 @@ class AlphaSmartCloudDeviceLock(LockEntity):
             await self.hass.async_add_executor_job(
                 self._api.set_device_value, self._device_id, PROP_LOCK_MODE, payload
             )
-        except Exception:
+            _LOGGER.debug("Successfully locked device %s", self._device_id)
+        except Exception as err:
+            _LOGGER.error("Failed to lock device %s: %s", self._device_id, err)
             self._pending_lock = None
             raise
 
@@ -149,6 +181,7 @@ class AlphaSmartCloudDeviceLock(LockEntity):
 
     async def async_unlock(self, **kwargs: Any) -> None:
         """Unlock the device controls."""
+        _LOGGER.debug("Unlocking device %s", self._device_id)
         payload = self._build_lock_payload(False)
         self._pending_lock = (False, time.monotonic())
 
@@ -156,7 +189,9 @@ class AlphaSmartCloudDeviceLock(LockEntity):
             await self.hass.async_add_executor_job(
                 self._api.set_device_value, self._device_id, PROP_LOCK_MODE, payload
             )
-        except Exception:
+            _LOGGER.debug("Successfully unlocked device %s", self._device_id)
+        except Exception as err:
+            _LOGGER.error("Failed to unlock device %s: %s", self._device_id, err)
             self._pending_lock = None
             raise
 

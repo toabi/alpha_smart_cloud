@@ -22,6 +22,7 @@ from .const import (
     ALPHA_SMART_CLIENT_ID,
     ALPHA_SMART_IDENTITY_POOL_ID,
     ALPHA_SMART_REGION,
+    ALPHA_SMART_STAGE,
     ALPHA_SMART_USER_POOL_ID,
     DOMAIN,
 )
@@ -47,6 +48,7 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
         client_id=ALPHA_SMART_CLIENT_ID,
         identity_pool_id=ALPHA_SMART_IDENTITY_POOL_ID,
         api_id=ALPHA_SMART_API_ID,
+        stage=ALPHA_SMART_STAGE,
     )
 
     try:

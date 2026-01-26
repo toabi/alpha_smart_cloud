@@ -1,9 +1,27 @@
-# alpha_smart_cloud
+# Alpha Smart Cloud Integration
 
-Integration of Alpha Smart Cloud devices into Home Assistant
+Home Assistant integration for Alpha Smart Cloud devices.
 
-## Setup
+## Prerequisites
 
-You need to own the IoT Gateway and setup your devices through that app.
+- OEM Alpha Smartware IoT Gateway (https://www.moehlenhoff.de/en/oem-alpha-smart-system)
+- Devices added through the Alpha Smart Cloud app
 
-But once devices are added they can be read and set through this component.
+## Installation
+
+### Via HACS (Recommended)
+
+1. Add this repository as a custom repository in HACS
+2. Install "Alpha Smart Cloud" from HACS
+3. Restart Home Assistant
+4. Add the integration via Settings → Devices & Services
+
+### Manual
+
+1. Copy the `custom_components/alpha_smart_cloud` directory to your Home Assistant `custom_components` folder
+2. Restart Home Assistant
+3. Add the integration via Settings → Devices & Services
+
+## Features
+
+Once configured, this integration allows you to monitor and control your Alpha Smart Cloud devices directly from Home Assistant.

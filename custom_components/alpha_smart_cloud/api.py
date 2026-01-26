@@ -294,10 +294,29 @@ class AlphaSmartCloudAPI:
         response.raise_for_status()
         return True
 
+    def set_home_vacation_mode(self, home_id: str, mode: str) -> bool:
+        """Set vacation mode for a home."""
+        data = {"mode": mode}
+        response = self._make_signed_request(
+            "POST", f"/v1/homes/{home_id}/vacationMode", data=data
+        )
+        response.raise_for_status()
+        return True
+
     def get_device_template(self, device_id: str) -> dict[str, Any]:
         """Get device template by device ID."""
         response = self._make_signed_request("GET", f"/v1/devices/{device_id}/template")
         return response.json()
+
+    def get_group_names(self) -> dict[str, str]:
+        """Get a mapping of group IDs to names."""
+        homes = self.get_homes()
+        group_names = {}
+        for home in homes:
+            for group in home.get("groups", []):
+                if group.get("name"):
+                    group_names[group["id"]] = group["name"]
+        return group_names
 
     def get_device_with_template(self, device_id: str) -> dict[str, Any]:
         """Get device values enriched with human-readable information from template."""

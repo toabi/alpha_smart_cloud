@@ -1,9 +1,24 @@
+# Alpha Smart Cloud API Reference
+
+This document provides examples of API requests and responses for the Alpha Smart Cloud integration.
+
+## Base URL
+
+```
+https://<api-gateway-id>.execute-api.eu-central-1.amazonaws.com/prod/v1
+```
+
+---
+
 # Data Retrieval
 
 ## Get Devices
 
-URL: https://<api-gateway-id>.execute-api.eu-central-1.amazonaws.com/prod/v1/devices
-Example Response:
+**Endpoint:** `GET /devices`
+
+**Description:** Retrieves a list of all devices associated with the account.
+
+**Example Response:**
 
 ```json
 [
@@ -111,10 +126,16 @@ Example Response:
     }
 ]
 ```
+
+---
+
 ## Get Homes
 
-URL: https://<api-gateway-id>.execute-api.eu-central-1.amazonaws.com/prod/v1/homes
-Example Response:
+**Endpoint:** `GET /homes`
+
+**Description:** Retrieves a list of all homes, including their groups and associated devices.
+
+**Example Response:**
 
 ```json
 [
@@ -183,10 +204,15 @@ Example Response:
 ]
 ```
 
+---
+
 ## Get Device Template
 
-URL: https://<api-gateway-id>.execute-api.eu-central-1.amazonaws.com/prod/v1/devices/<device-id>/template
-Example Response:
+**Endpoint:** `GET /devices/{device-id}/template`
+
+**Description:** Retrieves the device template, which defines the capabilities, properties, and configuration options for a specific device.
+
+**Example Response:**
 
 ```json
 {
@@ -603,10 +629,15 @@ Example Response:
 }
 ```
 
+---
+
 ## Get Device Values
 
-URL: https://<api-gateway-id>.execute-api.eu-central-1.amazonaws.com/prod/v1/devices/<device-id>/values
-Example Response:
+**Endpoint:** `GET /devices/{device-id}/values`
+
+**Description:** Retrieves the current state and values of all properties for a specific device.
+
+**Example Response:**
 
 ```json
 {
@@ -828,41 +859,34 @@ Example Response:
 }
 ```
 
+---
+
 # Device Updates
 
-Request: PUT https://<api-gateway-id>.execute-api.eu-central-1.amazonaws.com/prod/v1/devices/<device-id>/values
-Example Request Body to set target temperature:
+## Update Device Values
+
+**Endpoint:** `PUT /devices/{device-id}/values`
+
+**Description:** Updates one or more values on a device. Values must conform to the constraints defined in the device template.
+
+### Set Target Temperature
+
+**Example Request Body:**
+
 ```json
 {
     "30": 20.0
 }
 ```
 
-Full example with headers:
+**Example Response:** Empty response body with HTTP 200 status on success.
 
-PUT https://<api-gateway-id>.execute-api.eu-central-1.amazonaws.com/prod/v1/devices/<device-id>/values HTTP/1.1
-user-agent: Dart/3.10 (dart:io)
-x-amz-date: <amz-date>
-accept: application/json
-x-amz-security-token: <security-token>
-accept-encoding: gzip
-content-length: 11
-authorization: AWS4-HMAC-SHA256 Credential=<access-key-id>/20260123/eu-central-1/execute-api/aws4_request, SignedHeaders=accept;content-type;host;x-amz-date, Signature=<signature>
-host: <api-gateway-id>.execute-api.eu-central-1.amazonaws.com
-content-type: application/json
+**Important Notes:**
 
-Request Body:
+- Only set values that are allowed according to the device template
+- Thermostats define allowed values in their template response, for example:
 
-{
-"30": 19.6
-}
-
-Example Response: It will not contain any JSON! Just take care of a successful HTTP status.
-
-Important notes:
-
-Take care of only trying to set ALLOWED values, e.g. thermostats also define the allowed values in their device template response, e.g.:
-
+```json
 "content": {
     "category": "targetTemperature",
     "properties": {
@@ -872,14 +896,34 @@ Take care of only trying to set ALLOWED values, e.g. thermostats also define the
         "type": "interval",
         "max": 30
     }
-},
+}
+```
 
+**Full Request Example with Headers:**
 
-## Locking and unlocking the device
+```http
+PUT /devices/{device-id}/values HTTP/1.1
+Host: <api-gateway-id>.execute-api.eu-central-1.amazonaws.com
+Content-Type: application/json
+Accept: application/json
+Authorization: AWS4-HMAC-SHA256 Credential=<access-key-id>/20260123/eu-central-1/execute-api/aws4_request, SignedHeaders=accept;content-type;host;x-amz-date, Signature=<signature>
+X-Amz-Date: <amz-date>
+X-Amz-Security-Token: <security-token>
 
-### Locking the device
+{
+    "30": 19.6
+}
+```
 
-PUT on ./<device-id>/values with
+## Lock/Unlock Device
+
+**Endpoint:** `PUT /devices/{device-id}/values`
+
+**Description:** Controls the physical lock state of the device interface (menu and target temperature controls).
+
+### Lock the Device
+
+**Example Request Body:**
 
 ```json
 {
@@ -896,7 +940,9 @@ PUT on ./<device-id>/values with
 }
 ```
 
-### Unlocking the device
+### Unlock the Device
+
+**Example Request Body:**
 
 ```json
 {
@@ -913,9 +959,13 @@ PUT on ./<device-id>/values with
 }
 ```
 
-## Setting vacation mode
+## Set Vacation Temperature
 
-PUT <device-id>/values
+**Endpoint:** `PUT /devices/{device-id}/values`
+
+**Description:** Sets the vacation temperature for the device (the temperature to maintain when vacation mode is active).
+
+**Example Request Body:**
 
 ```json
 {
@@ -923,9 +973,13 @@ PUT <device-id>/values
 }
 ```
 
-## Setting a heating profile for a device:
+## Set Heating Profile
 
-PUT <device-id>/values
+**Endpoint:** `PUT /devices/{device-id}/values`
+
+**Description:** Configures the weekly heating schedule for the device. Each day can have up to 6 time/temperature entries.
+
+**Example Request Body:**
 
 ```json
 {
@@ -1029,5 +1083,35 @@ PUT <device-id>/values
             }
         ]
     }
+}
+```
+
+---
+
+# Home Management
+
+## Set Holiday Mode
+
+**Endpoint:** `POST /homes/{home-id}/vacationMode`
+
+**Description:** Enables or disables holiday/vacation mode for the entire home (not individual devices). When enabled, all devices use their configured vacation temperature.
+
+### Enable Holiday Mode
+
+**Example Request Body:**
+
+```json
+{
+    "mode": "on"
+}
+```
+
+### Disable Holiday Mode
+
+**Example Request Body:**
+
+```json
+{
+    "mode": "off"
 }
 ```

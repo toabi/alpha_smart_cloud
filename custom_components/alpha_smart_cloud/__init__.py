@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME, Platform
 from homeassistant.core import HomeAssistant
@@ -12,17 +14,33 @@ from .api import (
     AlphaSmartCloudAuthError,
     AlphaSmartCloudConnectionError,
 )
+from .coordinator import AlphaSmartCloudDataUpdateCoordinator
 from .const import (
     ALPHA_SMART_API_ID,
     ALPHA_SMART_CLIENT_ID,
     ALPHA_SMART_IDENTITY_POOL_ID,
     ALPHA_SMART_REGION,
+    ALPHA_SMART_STAGE,
     ALPHA_SMART_USER_POOL_ID,
 )
 
-_PLATFORMS: list[Platform] = [Platform.CLIMATE, Platform.LOCK, Platform.SENSOR]
+_PLATFORMS: list[Platform] = [
+    Platform.CLIMATE,
+    Platform.LOCK,
+    Platform.SENSOR,
+    Platform.SWITCH,
+]
 
-type AlphaSmartCloudConfigEntry = ConfigEntry[AlphaSmartCloudAPI]
+
+@dataclass(slots=True)
+class AlphaSmartCloudRuntimeData:
+    """Runtime data for the integration."""
+
+    api: AlphaSmartCloudAPI
+    coordinator: AlphaSmartCloudDataUpdateCoordinator
+
+
+type AlphaSmartCloudConfigEntry = ConfigEntry[AlphaSmartCloudRuntimeData]
 
 
 async def async_setup_entry(
@@ -36,6 +54,7 @@ async def async_setup_entry(
         client_id=ALPHA_SMART_CLIENT_ID,
         identity_pool_id=ALPHA_SMART_IDENTITY_POOL_ID,
         api_id=ALPHA_SMART_API_ID,
+        stage=ALPHA_SMART_STAGE,
     )
 
     try:
@@ -47,7 +66,9 @@ async def async_setup_entry(
     except AlphaSmartCloudConnectionError as err:
         raise ConfigEntryNotReady from err
 
-    entry.runtime_data = api
+    coordinator = AlphaSmartCloudDataUpdateCoordinator(hass, entry, api)
+    await coordinator.async_config_entry_first_refresh()
+    entry.runtime_data = AlphaSmartCloudRuntimeData(api=api, coordinator=coordinator)
 
     await hass.config_entries.async_forward_entry_setups(entry, _PLATFORMS)
 
