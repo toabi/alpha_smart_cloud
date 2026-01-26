@@ -4,11 +4,9 @@
   "codeowners": ["@toabi"],
   "config_flow": true,
   "dependencies": [],
-  "documentation": "https://www.home-assistant.io/integrations/alpha_smart_cloud",
-  "homekit": {},
+  "documentation": "https://github.com/toabi/alpha_smart_cloud",
+  "issue_tracker": "https://github.com/toabi/alpha_smart_cloud/issues",
   "iot_class": "cloud_polling",
   "quality_scale": "bronze",
-  "requirements": ["requests==2.32.5", "boto3==1.42.33", "pycognito==2024.5.1"],
-  "ssdp": [],
-  "zeroconf": []
+  "requirements": ["requests==2.32.5", "boto3==1.42.33", "pycognito==2024.5.1"]
 }
