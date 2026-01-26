@@ -1,6 +1,7 @@
 """API Client for Alpha Smart Cloud."""
 
 import json
+import logging
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
@@ -12,6 +13,8 @@ from botocore.exceptions import BotoCoreError, ClientError
 from pycognito import Cognito
 import pycognito.exceptions as cognito_exceptions
 import requests
+
+_LOGGER = logging.getLogger(__name__)
 
 _AUTH_EXCEPTIONS = tuple(
     exc
@@ -67,16 +70,19 @@ class AlphaSmartCloudAPI:
 
     def authenticate(self, username: str, password: str) -> None:
         """Authenticate with Cognito User Pool and get AWS credentials."""
+        _LOGGER.debug("Starting authentication for user: %s", username)
         self._username = username
         self._password = password
         self._authenticate_cognito()
         self._update_identity_credentials()
+        _LOGGER.info("Authentication successful, credentials expire at: %s", self._aws_credentials_expiration)
 
     def _authenticate_cognito(self) -> None:
         """Authenticate with Cognito User Pool and set tokens."""
         if not self._username or not self._password:
             raise AlphaSmartCloudMissingCredentialsError("Missing username or password")
 
+        _LOGGER.debug("Authenticating with Cognito User Pool")
         try:
             self._cognito_user = Cognito(
                 user_pool_id=self.user_pool_id,
@@ -84,8 +90,10 @@ class AlphaSmartCloudAPI:
                 username=self._username,
             )
             self._cognito_user.authenticate(password=self._password)
+            _LOGGER.debug("Cognito authentication successful")
         except ClientError as err:
             error_code = err.response.get("Error", {}).get("Code")
+            _LOGGER.error("Cognito authentication failed with ClientError: %s", error_code)
             if error_code in {
                 "NotAuthorizedException",
                 "UserNotFoundException",
@@ -95,25 +103,33 @@ class AlphaSmartCloudAPI:
                 raise AlphaSmartCloudAuthError from err
             raise AlphaSmartCloudConnectionError from err
         except _AUTH_EXCEPTIONS as err:
+            _LOGGER.error("Cognito authentication failed with auth exception: %s", err)
             raise AlphaSmartCloudAuthError from err
         except BotoCoreError as err:
+            _LOGGER.error("Cognito authentication failed with BotoCoreError: %s", err)
             raise AlphaSmartCloudConnectionError from err
         except Exception as err:
+            _LOGGER.error("Cognito authentication failed with unexpected error: %s", err)
             raise AlphaSmartCloudConnectionError from err
 
     def _refresh_cognito_session(self) -> None:
         """Refresh the Cognito user session, or reauthenticate if needed."""
+        _LOGGER.debug("Attempting to refresh Cognito session")
         if not self._cognito_user:
+            _LOGGER.debug("No cognito user, authenticating from scratch")
             self._authenticate_cognito()
             return
 
         refresh = getattr(self._cognito_user, "refresh_session", None)
         if callable(refresh):
+            _LOGGER.debug("Calling refresh_session method")
             try:
                 refresh()
+                _LOGGER.debug("Cognito session refreshed successfully")
                 return
             except ClientError as err:
                 error_code = err.response.get("Error", {}).get("Code")
+                _LOGGER.error("Cognito refresh failed with ClientError: %s", error_code)
                 if error_code in {
                     "NotAuthorizedException",
                     "UserNotFoundException",
@@ -123,19 +139,25 @@ class AlphaSmartCloudAPI:
                     raise AlphaSmartCloudAuthError from err
                 raise AlphaSmartCloudConnectionError from err
             except _AUTH_EXCEPTIONS as err:
+                _LOGGER.error("Cognito refresh failed with auth exception: %s", err)
                 raise AlphaSmartCloudAuthError from err
             except BotoCoreError as err:
+                _LOGGER.error("Cognito refresh failed with BotoCoreError: %s", err)
                 raise AlphaSmartCloudConnectionError from err
             except Exception as err:
+                _LOGGER.error("Cognito refresh failed with unexpected error: %s", err)
                 raise AlphaSmartCloudConnectionError from err
 
         renew = getattr(self._cognito_user, "renew_session", None)
         if callable(renew):
+            _LOGGER.debug("Calling renew_session method")
             try:
                 renew()
+                _LOGGER.debug("Cognito session renewed successfully")
                 return
             except ClientError as err:
                 error_code = err.response.get("Error", {}).get("Code")
+                _LOGGER.error("Cognito renew failed with ClientError: %s", error_code)
                 if error_code in {
                     "NotAuthorizedException",
                     "UserNotFoundException",
@@ -145,12 +167,16 @@ class AlphaSmartCloudAPI:
                     raise AlphaSmartCloudAuthError from err
                 raise AlphaSmartCloudConnectionError from err
             except _AUTH_EXCEPTIONS as err:
+                _LOGGER.error("Cognito renew failed with auth exception: %s", err)
                 raise AlphaSmartCloudAuthError from err
             except BotoCoreError as err:
+                _LOGGER.error("Cognito renew failed with BotoCoreError: %s", err)
                 raise AlphaSmartCloudConnectionError from err
             except Exception as err:
+                _LOGGER.error("Cognito renew failed with unexpected error: %s", err)
                 raise AlphaSmartCloudConnectionError from err
 
+        _LOGGER.debug("No refresh/renew method available, re-authenticating")
         self._authenticate_cognito()
 
     def _update_identity_credentials(self) -> None:
@@ -158,6 +184,7 @@ class AlphaSmartCloudAPI:
         if not self._cognito_user:
             raise AlphaSmartCloudMissingCredentialsError("Not authenticated")
 
+        _LOGGER.debug("Fetching AWS credentials from identity pool")
         try:
             cognito_identity = boto3.client(
                 "cognito-identity",
@@ -178,10 +205,12 @@ class AlphaSmartCloudAPI:
             )["Credentials"]
         except ClientError as err:
             error_code = err.response.get("Error", {}).get("Code")
+            _LOGGER.error("Failed to get identity credentials with ClientError: %s", error_code)
             if error_code == "NotAuthorizedException":
                 raise AlphaSmartCloudAuthError from err
             raise AlphaSmartCloudConnectionError from err
         except BotoCoreError as err:
+            _LOGGER.error("Failed to get identity credentials with BotoCoreError: %s", err)
             raise AlphaSmartCloudConnectionError from err
 
         self._aws_credentials = Credentials(
@@ -205,26 +234,50 @@ class AlphaSmartCloudAPI:
         else:
             self._aws_credentials_expiration = None
 
+        _LOGGER.debug("AWS credentials updated, expiration: %s", self._aws_credentials_expiration)
+
     def _credentials_expiring(self) -> bool:
         if not self._aws_credentials_expiration:
+            _LOGGER.debug("No expiration time set, considering credentials as expiring")
             return True
         now = datetime.now(timezone.utc)
-        return now >= self._aws_credentials_expiration - timedelta(minutes=5)
+        expiring = now >= self._aws_credentials_expiration - timedelta(minutes=5)
+        if expiring:
+            _LOGGER.info(
+                "Credentials expiring soon. Now: %s, Expiration: %s",
+                now,
+                self._aws_credentials_expiration,
+            )
+        return expiring
 
     def _ensure_valid_credentials(self) -> None:
         """Refresh AWS credentials if missing or expiring."""
         if self._aws_credentials and not self._credentials_expiring():
             return
 
+        _LOGGER.debug("Credentials missing or expiring, refreshing")
         try:
             self._update_identity_credentials()
+            _LOGGER.debug("Credentials refreshed successfully")
             return
-        except AlphaSmartCloudAuthError:
-            self._refresh_cognito_session()
-            self._update_identity_credentials()
-        except AlphaSmartCloudMissingCredentialsError:
-            self._authenticate_cognito()
-            self._update_identity_credentials()
+        except AlphaSmartCloudAuthError as err:
+            _LOGGER.warning("Auth error while updating credentials, refreshing Cognito session: %s", err)
+            try:
+                self._refresh_cognito_session()
+                self._update_identity_credentials()
+                _LOGGER.info("Successfully refreshed Cognito session and credentials")
+            except Exception as refresh_err:
+                _LOGGER.error("Failed to refresh Cognito session: %s", refresh_err)
+                raise
+        except AlphaSmartCloudMissingCredentialsError as err:
+            _LOGGER.warning("Missing credentials, re-authenticating: %s", err)
+            try:
+                self._authenticate_cognito()
+                self._update_identity_credentials()
+                _LOGGER.info("Successfully re-authenticated and got new credentials")
+            except Exception as auth_err:
+                _LOGGER.error("Failed to re-authenticate: %s", auth_err)
+                raise
 
     def _make_signed_request(
         self,
@@ -239,6 +292,7 @@ class AlphaSmartCloudAPI:
             raise AlphaSmartCloudAuthError("Not authenticated")
 
         url = f"{self.base_url}{endpoint}"
+        _LOGGER.debug("Making signed request: %s %s", method, endpoint)
 
         request_headers = {"Accept": "application/json"}
         if headers:
@@ -259,16 +313,23 @@ class AlphaSmartCloudAPI:
         SigV4Auth(self._aws_credentials, "execute-api", self.region).add_auth(req)
         prepared = req.prepare()
 
-        response = requests.request(
-            method=method.upper(),
-            url=url,
-            headers=prepared.headers,
-            data=body,
-            timeout=10,
-        )
-
-        response.raise_for_status()
-        return response
+        try:
+            response = requests.request(
+                method=method.upper(),
+                url=url,
+                headers=prepared.headers,
+                data=body,
+                timeout=10,
+            )
+            response.raise_for_status()
+            _LOGGER.debug("Request successful: %s %s (status: %s)", method, endpoint, response.status_code)
+            return response
+        except requests.exceptions.HTTPError as err:
+            _LOGGER.error("HTTP error for %s %s: %s (status: %s)", method, endpoint, err, err.response.status_code if err.response else "N/A")
+            raise
+        except requests.exceptions.RequestException as err:
+            _LOGGER.error("Request error for %s %s: %s", method, endpoint, err)
+            raise
 
     def get_homes(self) -> list[dict[str, Any]]:
         """Get list of homes."""
