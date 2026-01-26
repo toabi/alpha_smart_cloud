@@ -26,6 +26,7 @@ from .const import (
     PROP_NAME,
     PROP_SERIAL_NO,
     PROP_TARGET_TEMPERATURE,
+    PROP_TIME_PROFILE,
     PROP_WORK_MODE,
 )
 
@@ -73,6 +74,7 @@ class AlphaSmartCloudClimate(ClimateEntity):
         self._attr_hvac_mode = None
         self._attr_current_temperature = None
         self._attr_current_humidity = None
+        self._attr_extra_state_attributes = {}
         self._pending_updates: dict[str, tuple[Any, float]] = {}
 
         # Device info initialization
@@ -151,6 +153,13 @@ class AlphaSmartCloudClimate(ClimateEntity):
             self._attr_device_info["serial_number"] = properties[PROP_SERIAL_NO][
                 "value"
             ]
+
+        if PROP_TIME_PROFILE in properties:
+            self._attr_extra_state_attributes["time_profile"] = properties[
+                PROP_TIME_PROFILE
+            ]["value"]
+        else:
+            self._attr_extra_state_attributes.pop("time_profile", None)
 
         # Heuristic for OFF if target temp is very low and it's in manual
         if (
