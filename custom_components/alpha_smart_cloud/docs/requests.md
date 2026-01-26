@@ -873,3 +873,161 @@ Take care of only trying to set ALLOWED values, e.g. thermostats also define the
         "max": 30
     }
 },
+
+
+## Locking and unlocking the device
+
+### Locking the device
+
+PUT on ./<device-id>/values with
+
+```json
+{
+    "47": {
+        "standby": false,
+        "menu": true,
+        "targetTemp": true,
+        "reserved1": false,
+        "reserved2": false,
+        "reserved3": false,
+        "reserved4": false,
+        "reserved5": false
+    }
+}
+```
+
+### Unlocking the device
+
+```json
+{
+    "47": {
+        "standby": false,
+        "menu": false,
+        "targetTemp": false,
+        "reserved1": false,
+        "reserved2": false,
+        "reserved3": false,
+        "reserved4": false,
+        "reserved5": false
+    }
+}
+```
+
+## Setting vacation mode
+
+PUT <device-id>/values
+
+```json
+{
+    "34": 17
+}
+```
+
+## Setting a heating profile for a device:
+
+PUT <device-id>/values
+
+```json
+{
+    "timeProfile": {
+        "monday": [
+            {
+                "time": "05:00",
+                "temperature": 21.0
+            },
+            {
+                "time": "08:00",
+                "temperature": 20.0
+            },
+            {
+                "time": "20:00",
+                "temperature": 19.0
+            }
+        ],
+        "tuesday": [
+            {
+                "time": "05:00",
+                "temperature": 21.0
+            },
+            {
+                "time": "08:00",
+                "temperature": 20.0
+            },
+            {
+                "time": "20:00",
+                "temperature": 19.0
+            }
+        ],
+        "wednesday": [
+            {
+                "time": "05:00",
+                "temperature": 21.0
+            },
+            {
+                "time": "08:00",
+                "temperature": 20.0
+            },
+            {
+                "time": "20:00",
+                "temperature": 19.0
+            }
+        ],
+        "thursday": [
+            {
+                "time": "05:00",
+                "temperature": 21.0
+            },
+            {
+                "time": "08:00",
+                "temperature": 20.0
+            },
+            {
+                "time": "20:00",
+                "temperature": 19.0
+            }
+        ],
+        "friday": [
+            {
+                "time": "05:00",
+                "temperature": 21.0
+            },
+            {
+                "time": "08:00",
+                "temperature": 20.0
+            },
+            {
+                "time": "20:00",
+                "temperature": 19.0
+            }
+        ],
+        "saturday": [
+            {
+                "time": "06:00",
+                "temperature": 19.0
+            },
+            {
+                "time": "08:00",
+                "temperature": 21.0
+            },
+            {
+                "time": "22:00",
+                "temperature": 19.0
+            }
+        ],
+        "sunday": [
+            {
+                "time": "06:00",
+                "temperature": 19.0
+            },
+            {
+                "time": "08:00",
+                "temperature": 21.0
+            },
+            {
+                "time": "22:00",
+                "temperature": 19.0
+            }
+        ]
+    }
+}
+```

@@ -20,7 +20,7 @@ from .const import (
     ALPHA_SMART_USER_POOL_ID,
 )
 
-_PLATFORMS: list[Platform] = [Platform.CLIMATE, Platform.SENSOR]
+_PLATFORMS: list[Platform] = [Platform.CLIMATE, Platform.LOCK, Platform.SENSOR]
 
 type AlphaSmartCloudConfigEntry = ConfigEntry[AlphaSmartCloudAPI]
 
