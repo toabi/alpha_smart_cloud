@@ -1,17 +1,40 @@
 """API Client for Alpha Smart Cloud."""
 
 import json
-import logging
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import boto3
 from botocore.auth import SigV4Auth
 from botocore.awsrequest import AWSRequest
 from botocore.credentials import Credentials
+from botocore.exceptions import BotoCoreError, ClientError
 from pycognito import Cognito
+import pycognito.exceptions as cognito_exceptions
 import requests
 
-_LOGGER = logging.getLogger(__name__)
+_AUTH_EXCEPTIONS = tuple(
+    exc
+    for exc in (
+        getattr(cognito_exceptions, "NotAuthorizedException", None),
+        getattr(cognito_exceptions, "UserNotFoundException", None),
+        getattr(cognito_exceptions, "UserNotConfirmedException", None),
+        getattr(cognito_exceptions, "PasswordResetRequiredException", None),
+    )
+    if isinstance(exc, type)
+)
+
+
+class AlphaSmartCloudAuthError(Exception):
+    """Error to indicate invalid authentication."""
+
+
+class AlphaSmartCloudConnectionError(Exception):
+    """Error to indicate connection or service failure."""
+
+
+class AlphaSmartCloudMissingCredentialsError(AlphaSmartCloudAuthError):
+    """Error to indicate stored credentials are missing."""
 
 
 class AlphaSmartCloudAPI:
@@ -37,29 +60,112 @@ class AlphaSmartCloudAPI:
 
         self._cognito_user: Cognito | None = None
         self._aws_credentials: Credentials | None = None
+        self._aws_credentials_expiration: datetime | None = None
         self._identity_id: str | None = None
+        self._username: str | None = None
+        self._password: str | None = None
 
-    def authenticate(self, username: str, password: str) -> bool:
+    def authenticate(self, username: str, password: str) -> None:
         """Authenticate with Cognito User Pool and get AWS credentials."""
+        self._username = username
+        self._password = password
+        self._authenticate_cognito()
+        self._update_identity_credentials()
+
+    def _authenticate_cognito(self) -> None:
+        """Authenticate with Cognito User Pool and set tokens."""
+        if not self._username or not self._password:
+            raise AlphaSmartCloudMissingCredentialsError("Missing username or password")
+
         try:
-            # Step 1: Authenticate with Cognito User Pool
             self._cognito_user = Cognito(
                 user_pool_id=self.user_pool_id,
                 client_id=self.client_id,
-                username=username,
+                username=self._username,
             )
-            self._cognito_user.authenticate(password=password)
+            self._cognito_user.authenticate(password=self._password)
+        except ClientError as err:
+            error_code = err.response.get("Error", {}).get("Code")
+            if error_code in {
+                "NotAuthorizedException",
+                "UserNotFoundException",
+                "UserNotConfirmedException",
+                "PasswordResetRequiredException",
+            }:
+                raise AlphaSmartCloudAuthError from err
+            raise AlphaSmartCloudConnectionError from err
+        except _AUTH_EXCEPTIONS as err:
+            raise AlphaSmartCloudAuthError from err
+        except BotoCoreError as err:
+            raise AlphaSmartCloudConnectionError from err
+        except Exception as err:
+            raise AlphaSmartCloudConnectionError from err
 
-            # Step 2: Get AWS credentials from Cognito Identity Pool
+    def _refresh_cognito_session(self) -> None:
+        """Refresh the Cognito user session, or reauthenticate if needed."""
+        if not self._cognito_user:
+            self._authenticate_cognito()
+            return
+
+        refresh = getattr(self._cognito_user, "refresh_session", None)
+        if callable(refresh):
+            try:
+                refresh()
+                return
+            except ClientError as err:
+                error_code = err.response.get("Error", {}).get("Code")
+                if error_code in {
+                    "NotAuthorizedException",
+                    "UserNotFoundException",
+                    "UserNotConfirmedException",
+                    "PasswordResetRequiredException",
+                }:
+                    raise AlphaSmartCloudAuthError from err
+                raise AlphaSmartCloudConnectionError from err
+            except _AUTH_EXCEPTIONS as err:
+                raise AlphaSmartCloudAuthError from err
+            except BotoCoreError as err:
+                raise AlphaSmartCloudConnectionError from err
+            except Exception as err:
+                raise AlphaSmartCloudConnectionError from err
+
+        renew = getattr(self._cognito_user, "renew_session", None)
+        if callable(renew):
+            try:
+                renew()
+                return
+            except ClientError as err:
+                error_code = err.response.get("Error", {}).get("Code")
+                if error_code in {
+                    "NotAuthorizedException",
+                    "UserNotFoundException",
+                    "UserNotConfirmedException",
+                    "PasswordResetRequiredException",
+                }:
+                    raise AlphaSmartCloudAuthError from err
+                raise AlphaSmartCloudConnectionError from err
+            except _AUTH_EXCEPTIONS as err:
+                raise AlphaSmartCloudAuthError from err
+            except BotoCoreError as err:
+                raise AlphaSmartCloudConnectionError from err
+            except Exception as err:
+                raise AlphaSmartCloudConnectionError from err
+
+        self._authenticate_cognito()
+
+    def _update_identity_credentials(self) -> None:
+        """Fetch AWS credentials using Cognito Identity Pool."""
+        if not self._cognito_user:
+            raise AlphaSmartCloudMissingCredentialsError("Not authenticated")
+
+        try:
             cognito_identity = boto3.client(
                 "cognito-identity",
                 region_name=self.region,
             )
-
             logins = {
                 f"cognito-idp.{self.region}.amazonaws.com/{self.user_pool_id}": self._cognito_user.id_token
             }
-
             identity = cognito_identity.get_id(
                 IdentityPoolId=self.identity_pool_id,
                 Logins=logins,
@@ -70,17 +176,55 @@ class AlphaSmartCloudAPI:
                 IdentityId=self._identity_id,
                 Logins=logins,
             )["Credentials"]
+        except ClientError as err:
+            error_code = err.response.get("Error", {}).get("Code")
+            if error_code == "NotAuthorizedException":
+                raise AlphaSmartCloudAuthError from err
+            raise AlphaSmartCloudConnectionError from err
+        except BotoCoreError as err:
+            raise AlphaSmartCloudConnectionError from err
 
-            self._aws_credentials = Credentials(
-                access_key=creds["AccessKeyId"],
-                secret_key=creds["SecretKey"],
-                token=creds["SessionToken"],
-            )
-        except Exception:
-            _LOGGER.exception("Authentication failed")
-            return False
+        self._aws_credentials = Credentials(
+            access_key=creds["AccessKeyId"],
+            secret_key=creds["SecretKey"],
+            token=creds["SessionToken"],
+        )
+        expiration = creds.get("Expiration")
+        if isinstance(expiration, datetime):
+            if expiration.tzinfo is None:
+                expiration = expiration.replace(tzinfo=timezone.utc)
+            self._aws_credentials_expiration = expiration
+        elif isinstance(expiration, str):
+            try:
+                parsed = datetime.fromisoformat(expiration)
+                if parsed.tzinfo is None:
+                    parsed = parsed.replace(tzinfo=timezone.utc)
+                self._aws_credentials_expiration = parsed
+            except ValueError:
+                self._aws_credentials_expiration = None
         else:
+            self._aws_credentials_expiration = None
+
+    def _credentials_expiring(self) -> bool:
+        if not self._aws_credentials_expiration:
             return True
+        now = datetime.now(timezone.utc)
+        return now >= self._aws_credentials_expiration - timedelta(minutes=5)
+
+    def _ensure_valid_credentials(self) -> None:
+        """Refresh AWS credentials if missing or expiring."""
+        if self._aws_credentials and not self._credentials_expiring():
+            return
+
+        try:
+            self._update_identity_credentials()
+            return
+        except AlphaSmartCloudAuthError:
+            self._refresh_cognito_session()
+            self._update_identity_credentials()
+        except AlphaSmartCloudMissingCredentialsError:
+            self._authenticate_cognito()
+            self._update_identity_credentials()
 
     def _make_signed_request(
         self,
@@ -90,8 +234,9 @@ class AlphaSmartCloudAPI:
         data: dict[str, Any] | None = None,
     ) -> requests.Response:
         """Make a signed AWS SigV4 request to the API."""
+        self._ensure_valid_credentials()
         if not self._aws_credentials:
-            raise ValueError("Not authenticated. Call authenticate() first.")
+            raise AlphaSmartCloudAuthError("Not authenticated")
 
         url = f"{self.base_url}{endpoint}"
 

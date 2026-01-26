@@ -5,8 +5,13 @@ from __future__ import annotations
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME, Platform
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
 
-from .api import AlphaSmartCloudAPI
+from .api import (
+    AlphaSmartCloudAPI,
+    AlphaSmartCloudAuthError,
+    AlphaSmartCloudConnectionError,
+)
 from .const import (
     ALPHA_SMART_API_ID,
     ALPHA_SMART_CLIENT_ID,
@@ -33,10 +38,14 @@ async def async_setup_entry(
         api_id=ALPHA_SMART_API_ID,
     )
 
-    if not await hass.async_add_executor_job(
-        api.authenticate, entry.data[CONF_USERNAME], entry.data[CONF_PASSWORD]
-    ):
-        return False
+    try:
+        await hass.async_add_executor_job(
+            api.authenticate, entry.data[CONF_USERNAME], entry.data[CONF_PASSWORD]
+        )
+    except AlphaSmartCloudAuthError as err:
+        raise ConfigEntryAuthFailed from err
+    except AlphaSmartCloudConnectionError as err:
+        raise ConfigEntryNotReady from err
 
     entry.runtime_data = api
 

@@ -12,7 +12,11 @@ from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 
-from .api import AlphaSmartCloudAPI
+from .api import (
+    AlphaSmartCloudAPI,
+    AlphaSmartCloudAuthError,
+    AlphaSmartCloudConnectionError,
+)
 from .const import (
     ALPHA_SMART_API_ID,
     ALPHA_SMART_CLIENT_ID,
@@ -45,10 +49,14 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
         api_id=ALPHA_SMART_API_ID,
     )
 
-    if not await hass.async_add_executor_job(
-        api.authenticate, data[CONF_USERNAME], data[CONF_PASSWORD]
-    ):
-        raise InvalidAuth
+    try:
+        await hass.async_add_executor_job(
+            api.authenticate, data[CONF_USERNAME], data[CONF_PASSWORD]
+        )
+    except AlphaSmartCloudAuthError as err:
+        raise InvalidAuth from err
+    except AlphaSmartCloudConnectionError as err:
+        raise CannotConnect from err
 
     # Test connection by fetching devices
     try:

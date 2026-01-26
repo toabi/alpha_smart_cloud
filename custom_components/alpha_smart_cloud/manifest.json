@@ -1,13 +1,13 @@
 {
   "domain": "alpha_smart_cloud",
   "name": "Alpha Smart Cloud",
-  "version": "0.0.0",
   "codeowners": ["@toabi"],
   "config_flow": true,
   "dependencies": [],
   "documentation": "https://github.com/toabi/alpha_smart_cloud",
-  "issue_tracker": "https://github.com/toabi/alpha_smart_cloud/issues",
   "iot_class": "cloud_polling",
+  "issue_tracker": "https://github.com/toabi/alpha_smart_cloud/issues",
   "quality_scale": "bronze",
-  "requirements": ["requests==2.32.5", "boto3==1.42.33", "pycognito==2024.5.1"]
+  "requirements": ["requests==2.32.5", "boto3==1.42.33", "pycognito==2024.5.1"],
+  "version": "0.0.0"
 }
