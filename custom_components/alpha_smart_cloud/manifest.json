@@ -1,6 +1,7 @@
 {
   "domain": "alpha_smart_cloud",
   "name": "Alpha Smart Cloud",
+  "version": "0.0.0",
   "codeowners": ["@toabi"],
   "config_flow": true,
   "dependencies": [],
