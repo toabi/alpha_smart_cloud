@@ -19,7 +19,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from . import AlphaSmartCloudConfigEntry
 from .api import AlphaSmartCloudAPI
 from .coordinator import AlphaSmartCloudData, AlphaSmartCloudDataUpdateCoordinator
-from .const import DOMAIN, PROP_BATTERY, PROP_IS_ONLINE, PROP_NAME, PROP_RSSI
+from .const import DOMAIN, PROP_BATTERY, PROP_HUMIDITY, PROP_IS_ONLINE, PROP_NAME, PROP_RSSI
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -57,6 +57,14 @@ async def async_setup_entry(
         if PROP_RSSI in properties:
             entities.append(
                 AlphaSmartCloudRSSISensor(coordinator, api, device_data, room_name)
+            )
+
+        # Add humidity sensor for climate devices (type "rbg")
+        if device.get("type") == "rbg" and PROP_HUMIDITY in properties:
+            entities.append(
+                AlphaSmartCloudHumiditySensor(
+                    coordinator, api, device_data, room_name
+                )
             )
 
     async_add_entities(entities)
@@ -169,3 +177,30 @@ class AlphaSmartCloudRSSISensor(AlphaSmartCloudSensor):
 
         if PROP_RSSI in properties:
             self._attr_native_value = properties[PROP_RSSI]["value"]
+
+
+class AlphaSmartCloudHumiditySensor(AlphaSmartCloudSensor):
+    """Representation of an Alpha Smart Cloud humidity sensor."""
+
+    _attr_device_class = SensorDeviceClass.HUMIDITY
+    _attr_native_unit_of_measurement = PERCENTAGE
+
+    def __init__(
+        self,
+        coordinator: AlphaSmartCloudDataUpdateCoordinator,
+        api: AlphaSmartCloudAPI,
+        device_data: dict[str, Any],
+        room_name: str | None = None,
+    ) -> None:
+        """Initialize the humidity sensor."""
+        self._attr_name = "Humidity"
+        self._attr_unique_id = f"{device_data['deviceId']}_humidity"
+        super().__init__(coordinator, api, device_data, room_name)
+
+    def _update_from_data(self, device_data: dict[str, Any]) -> None:
+        """Update entity state from enriched device data."""
+        super()._update_from_data(device_data)
+        properties = {prop["id"]: prop for prop in device_data.get("properties", [])}
+
+        if PROP_HUMIDITY in properties:
+            self._attr_native_value = properties[PROP_HUMIDITY]["value"]

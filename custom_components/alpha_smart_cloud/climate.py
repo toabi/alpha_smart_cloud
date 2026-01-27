@@ -96,6 +96,7 @@ class AlphaSmartCloudClimate(
         self._api = api
         self._device_id = device_data["deviceId"]
         self._attr_unique_id = self._device_id
+        self._attr_name = "Thermostat"
         self._attr_target_temperature = None
         self._attr_preset_mode = PRESET_NONE
         self._attr_hvac_mode = None
