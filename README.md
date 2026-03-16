@@ -1,3 +1,5 @@
+**Unsolved Issue: the hardware dongle goes to sleep and doesn't update cloud data anymore until the user opens the smartphone app again. Until this is solved, this component is nearly useless!**
+
 # Alpha Smart Cloud Integration
 
 Home Assistant integration for Alpha Smart Cloud devices.
